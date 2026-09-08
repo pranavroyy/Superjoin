@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Fact Knowledge Layer</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --border: #2a2e38; --text: #e6e8ec;
+    --muted: #8a90a0; --accent: #6ea8fe; --corroborate: #3fb950; --contradict: #f85149;
+    --reconcile: #d29922; --issue: #a371f7;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--text); }
+  header { padding: 20px 28px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+  header h1 { font-size:18px; margin:0; font-weight:600; }
+  header .sub { color:var(--muted); font-size:13px; margin-top:4px; }
+  .layout { display:flex; }
+  nav { width:200px; padding:20px 0; border-right:1px solid var(--border); min-height:calc(100vh - 70px); }
+  nav button { display:block; width:100%; text-align:left; background:none; border:none; color:var(--muted);
+    padding:10px 24px; cursor:pointer; font-size:14px; }
+  nav button.active { color:var(--text); background:var(--panel); border-right:2px solid var(--accent); }
+  main { flex:1; padding:24px 32px; max-width:1100px; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px 18px; margin-bottom:14px; }
+  .upload-zone { border:2px dashed var(--border); border-radius:10px; padding:28px; text-align:center; color:var(--muted); cursor:pointer; }
+  .upload-zone:hover { border-color: var(--accent); color: var(--text); }
+  input[type=file] { display:none; }
+  .stats { display:flex; gap:14px; margin-bottom:18px; flex-wrap:wrap; }
+  .stat { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px 18px; min-width:110px; }
+  .stat .num { font-size:22px; font-weight:700; }
+  .stat .label { color:var(--muted); font-size:12px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); vertical-align:top; }
+  th { color:var(--muted); font-weight:500; font-size:12px; text-transform:uppercase; }
+  .quote { color:var(--muted); font-style:italic; font-size:12px; }
+  .tag { display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; font-weight:600; }
+  .tag.corroborates { background:rgba(63,185,80,.15); color:var(--corroborate); }
+  .tag.contradicts { background:rgba(248,81,73,.15); color:var(--contradict); }
+  .tag.reconciled { background:rgba(210,153,34,.15); color:var(--reconcile); }
+  .rel-card .explanation { margin-top:8px; font-size:13px; }
+  .factbox { background:#11141a; border:1px solid var(--border); border-radius:6px; padding:8px 10px; margin-top:6px; font-size:12px; }
+  .factbox b { color:var(--text); }
+  .pill { color:var(--muted); font-size:11px; }
+  .filters { margin-bottom:12px; display:flex; gap:8px; }
+  .filters button { background:var(--panel); border:1px solid var(--border); color:var(--muted); border-radius:20px;
+    padding:6px 14px; font-size:12px; cursor:pointer; }
+  .filters button.active { color:var(--text); border-color:var(--accent); }
+  .empty { color:var(--muted); padding:20px; text-align:center; }
+  #status { font-size:13px; color:var(--muted); margin-top:10px; }
+  .doc-title { font-weight:600; }
+  .conf { color:var(--muted); font-size:11px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Fact Knowledge Layer</h1>
+    <div class="sub">Upload PDFs → extract grounded facts → find corroboration, contradictions & reconciliations</div>
+  </div>
+</header>
+<div class="layout">
+  <nav>
+    <button data-tab="upload" class="active">Upload</button>
+    <button data-tab="facts">Facts</button>
+    <button data-tab="relationships">Relationships</button>
+    <button data-tab="issues">Issues</button>
+  </nav>
+  <main>
+    <div class="stats" id="stats"></div>
+
+    <section id="tab-upload">
+      <div class="card">
+        <div class="upload-zone" id="dropzone">
+          <div>Click to choose a PDF, or drag one here</div>
+          <div style="font-size:12px;margin-top:6px;">Any PDF — no filenames/schemas are hard-coded</div>
+        </div>
+        <input type="file" id="fileInput" accept="application/pdf">
+        <div id="status"></div>
+      </div>
+      <div class="card">
+        <b>Documents processed</b>
+        <table id="docsTable"><thead><tr><th>ID</th><th>Title</th><th>Pages</th><th>Uploaded</th></tr></thead><tbody></tbody></table>
+      </div>
+    </section>
+
+    <section id="tab-facts" style="display:none">
+      <div class="card">
+        <table id="factsTable">
+          <thead><tr><th>Doc</th><th>Page</th><th>Subject</th><th>Attribute</th><th>Value</th><th>Period / Scope</th><th>Type</th><th>Evidence</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="tab-relationships" style="display:none">
+      <div class="filters" id="relFilters">
+        <button data-rel="" class="active">All</button>
+        <button data-rel="corroborates">Corroborates</button>
+        <button data-rel="contradicts">Contradicts</button>
+        <button data-rel="reconciled">Reconciled</button>
+      </div>
+      <div id="relList"></div>
+    </section>
+
+    <section id="tab-issues" style="display:none">
+      <div class="card">
+        <table id="issuesTable">
+          <thead><tr><th>Doc</th><th>Page</th><th>Issue</th><th>Excerpt</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+const API = "";
+
+document.querySelectorAll("nav button").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll("nav button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    document.querySelectorAll("main section").forEach(s => s.style.display = "none");
+    document.getElementById("tab-" + btn.dataset.tab).style.display = "block";
+    if (btn.dataset.tab === "facts") loadFacts();
+    if (btn.dataset.tab === "relationships") loadRelationships();
+    if (btn.dataset.tab === "issues") loadIssues();
+  };
+});
+
+const dropzone = document.getElementById("dropzone");
+const fileInput = document.getElementById("fileInput");
+dropzone.onclick = () => fileInput.click();
+dropzone.ondragover = (e) => { e.preventDefault(); dropzone.style.borderColor = "var(--accent)"; };
+dropzone.ondrop = (e) => { e.preventDefault(); if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]); };
+fileInput.onchange = () => { if (fileInput.files.length) uploadFile(fileInput.files[0]); };
+
+async function uploadFile(file) {
+  const status = document.getElementById("status");
+  status.textContent = `Uploading ${file.name}...`;
+  const form = new FormData();
+  form.append("file", file);
+  try {
+    const res = await fetch("/api/documents", { method: "POST", body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "Upload failed");
+    status.textContent = `Done: ${data.num_facts_extracted} facts extracted from ${data.num_pages} pages, ${data.num_relationships_found} relationships found.`;
+    loadDocs(); loadStats();
+  } catch (e) {
+    status.textContent = "Error: " + e.message;
+  }
+}
+
+async function loadStats() {
+  const s = await (await fetch("/api/summary")).json();
+  const rel = s.relationships || {};
+  document.getElementById("stats").innerHTML = `
+    <div class="stat"><div class="num">${s.documents}</div><div class="label">Documents</div></div>
+    <div class="stat"><div class="num">${s.facts}</div><div class="label">Facts</div></div>
+    <div class="stat"><div class="num">${rel.corroborates || 0}</div><div class="label">Corroborations</div></div>
+    <div class="stat"><div class="num">${rel.contradicts || 0}</div><div class="label">Contradictions</div></div>
+    <div class="stat"><div class="num">${rel.reconciled || 0}</div><div class="label">Reconciled</div></div>
+    <div class="stat"><div class="num">${s.issues}</div><div class="label">Issues</div></div>
+  `;
+}
+
+async function loadDocs() {
+  const docs = await (await fetch("/api/documents")).json();
+  const tbody = document.querySelector("#docsTable tbody");
+  tbody.innerHTML = docs.map(d => `<tr><td>${d.id}</td><td class="doc-title">${escapeHtml(d.title || d.filename)}</td><td>${d.num_pages}</td><td>${d.uploaded_at}</td></tr>`).join("") || `<tr><td colspan="4" class="empty">No documents yet</td></tr>`;
+}
+
+async function loadFacts() {
+  const facts = await (await fetch("/api/facts")).json();
+  const tbody = document.querySelector("#factsTable tbody");
+  tbody.innerHTML = facts.map(f => `<tr>
+    <td>${f.document_id}</td><td>${f.page}</td>
+    <td>${escapeHtml(f.subject)}</td><td>${escapeHtml(f.attribute)}</td>
+    <td>${escapeHtml(f.value_raw)}${f.unit ? " " + escapeHtml(f.unit) : ""}</td>
+    <td class="pill">${escapeHtml(f.period || "")} ${f.scope ? "· " + escapeHtml(f.scope) : ""}</td>
+    <td class="pill">${escapeHtml(f.fact_type || "")}</td>
+    <td class="quote">"${escapeHtml(f.quote)}"</td>
+  </tr>`).join("") || `<tr><td colspan="8" class="empty">No facts yet — upload a PDF first</td></tr>`;
+}
+
+let currentRelFilter = "";
+document.querySelectorAll("#relFilters button").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll("#relFilters button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentRelFilter = btn.dataset.rel;
+    loadRelationships();
+  };
+});
+
+async function loadRelationships() {
+  const url = "/api/relationships" + (currentRelFilter ? `?relationship=${currentRelFilter}` : "");
+  const rels = await (await fetch(url)).json();
+  const container = document.getElementById("relList");
+  if (!rels.length) { container.innerHTML = `<div class="empty">No relationships found yet</div>`; return; }
+  container.innerHTML = rels.map(r => `
+    <div class="card rel-card">
+      <span class="tag ${r.relationship}">${r.relationship}</span>
+      <span class="conf"> confidence ${(r.confidence*100).toFixed(0)}%</span>
+      <div class="explanation">${escapeHtml(r.explanation)}</div>
+      <div class="factbox"><b>Fact A</b> — doc ${r.fact_a.document_id}, p.${r.fact_a.page}: ${escapeHtml(r.fact_a.subject)} · ${escapeHtml(r.fact_a.attribute)} = ${escapeHtml(r.fact_a.value_raw)} ${r.fact_a.unit||""} ${r.fact_a.period?("("+escapeHtml(r.fact_a.period)+")"):""}<br><span class="quote">"${escapeHtml(r.fact_a.quote)}"</span></div>
+      <div class="factbox"><b>Fact B</b> — doc ${r.fact_b.document_id}, p.${r.fact_b.page}: ${escapeHtml(r.fact_b.subject)} · ${escapeHtml(r.fact_b.attribute)} = ${escapeHtml(r.fact_b.value_raw)} ${r.fact_b.unit||""} ${r.fact_b.period?("("+escapeHtml(r.fact_b.period)+")"):""}<br><span class="quote">"${escapeHtml(r.fact_b.quote)}"</span></div>
+    </div>
+  `).join("");
+}
+
+async function loadIssues() {
+  const issues = await (await fetch("/api/issues")).json();
+  const tbody = document.querySelector("#issuesTable tbody");
+  tbody.innerHTML = issues.map(i => `<tr><td>${i.document_id}</td><td>${i.page ?? ""}</td><td>${escapeHtml(i.issue)}</td><td class="quote">${escapeHtml((i.raw_excerpt||"").slice(0,140))}</td></tr>`).join("") || `<tr><td colspan="4" class="empty">No issues logged</td></tr>`;
+}
+
+function escapeHtml(s) {
+  return (s ?? "").toString().replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+loadStats(); loadDocs();
+</script>
+</body>
+</html>
